@@ -348,6 +348,55 @@ describe('Test userController', () => {
       });
     });
 
-    // TODO: Task 1 - Add more tests
+    it('should return 400 for request missing username', async () => {
+      const mockReqBody = {
+        biography: 'This is my new bio',
+      };
+      const response = await supertest(app).patch('/user/updateBiography').send(mockReqBody);
+      expect(response.status).toBe(400);
+      expect(response.text).toBe('Invalid request body: username and biography are required');
+    });
+
+    it('should return 400 for request missing biography', async () => {
+      const mockReqBody = {
+        username: mockUser.username,
+      };
+      const response = await supertest(app).patch('/user/updateBiography').send(mockReqBody);
+      expect(response.status).toBe(400);
+      expect(response.text).toBe('Invalid request body: username and biography are required');
+    });
+
+    it('should return 400 for request with empty username', async () => {
+      const mockReqBody = {
+        username: '',
+        biography: 'This is my new bio',
+      };
+      const response = await supertest(app).patch('/user/updateBiography').send(mockReqBody);
+      expect(response.status).toBe(400);
+      expect(response.text).toBe('Invalid request body: username and biography are required');
+    });
+
+    it('should successfully update biography with empty string', async () => {
+      const mockReqBody = {
+        username: mockUser.username,
+        biography: '',
+      };
+      updatedUserSpy.mockResolvedValueOnce(mockSafeUser);
+      const response = await supertest(app).patch('/user/updateBiography').send(mockReqBody);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(mockUserJSONResponse);
+      expect(updatedUserSpy).toHaveBeenCalledWith(mockUser.username, { biography: '' });
+    });
+
+    it('should return 500 for database error while updating biography', async () => {
+      const mockReqBody = {
+        username: mockUser.username,
+        biography: 'This is my new bio',
+      };
+      updatedUserSpy.mockResolvedValueOnce({ error: 'User not found' });
+      const response = await supertest(app).patch('/user/updateBiography').send(mockReqBody);
+      expect(response.status).toBe(500);
+      expect(response.text).toContain('Error when updating user biography:');
+    });
   });
 });

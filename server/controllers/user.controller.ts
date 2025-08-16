@@ -126,7 +126,15 @@ const userController = (socket: FakeSOSocket) => {
    * @returns A promise resolving to void.
    */
   const getUsers = async (_: Request, res: Response): Promise<void> => {
-    // TODO: Task 1 - Implement the getUsers endpoint
+    try {
+      const users = await getUsersList();
+      if ('error' in users) {
+        throw Error(users.error);
+      }
+      res.status(200).json(users);
+    } catch (error) {
+      res.status(500).send(`Error when getting users: ${error}`);
+    }
   };
 
   /**
@@ -188,17 +196,22 @@ const userController = (socket: FakeSOSocket) => {
    */
   const updateBiography = async (req: UpdateBiographyRequest, res: Response): Promise<void> => {
     try {
-      // TODO: Task 1 - Implement the updateBiography function, including request validation
-
-      // Emit socket event for real-time updates
+      if (!req.body || !req.body.username || req.body.biography === undefined) {
+        res.status(400).send('Invalid request body: username and biography are required');
+        return;
+      }
+      const { username, biography } = req.body;
+      const updatedUser = await updateUser(username, { biography });
+      if ('error' in updatedUser) {
+        throw Error(updatedUser.error);
+      }
       socket.emit('userUpdate', {
         user: updatedUser,
         type: 'updated',
       });
-
-      // TODO: Task 1 - Return the updated user object
+      res.status(200).json(updatedUser);
     } catch (error) {
-      // TODO: Task 1 - Handle errors appropriately
+      res.status(500).send(`Error when updating user biography: ${error}`);
     }
   };
 
@@ -208,9 +221,8 @@ const userController = (socket: FakeSOSocket) => {
   router.patch('/resetPassword', resetPassword);
   router.get('/getUser/:username', getUser);
   router.delete('/deleteUser/:username', deleteUser);
-
-  // TODO: Task 1- Add a route for updating a user's biography
-  // TODO: Task 1 - Add a route for getting all users
+  router.patch('/updateBiography', updateBiography);
+  router.get('/getUsers', getUsers);
 
   return router;
 };

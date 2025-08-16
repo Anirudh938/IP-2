@@ -10,6 +10,7 @@ const USER_API_URL = `${process.env.REACT_APP_SERVER_URL}/user`;
  * @throws Error if there is an issue fetching users.
  */
 const getUsers = async (): Promise<User[]> => {
+  console.log(USER_API_URL);
   const res = await api.get(`${USER_API_URL}/getUsers`);
   if (res.status !== 200) {
     throw new Error('Error when fetching users');

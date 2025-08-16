@@ -90,7 +90,34 @@ describe('getUsersList', () => {
     expect(retrievedUsers[0].dateJoined).toEqual(safeUser.dateJoined);
   });
 
-  // TODO: Task 1 - Add more tests for getUsersList
+  it('should throw an error if no users are found', async () => {
+    mockingoose(UserModel).toReturn(null, 'find');
+    const getUsersError = await getUsersList();
+    expect('error' in getUsersError).toBe(true);
+  });
+
+  it('should throw an error if there is a database error while retrieving users', async () => {
+    mockingoose(UserModel).toReturn(new Error('Database connection failed'), 'find');
+    const getUsersError = await getUsersList();
+    expect('error' in getUsersError).toBe(true);
+  });
+
+  it('should return users in chronological order (oldest first)', async () => {
+    const user1 = { ...safeUser, username: 'user1', dateJoined: new Date('2024-01-01') };
+    const user2 = { ...safeUser, username: 'user2', dateJoined: new Date('2024-01-02') };
+    mockingoose(UserModel).toReturn([user1, user2], 'find');
+    const retrievedUsers = (await getUsersList()) as SafeUser[];
+    expect(retrievedUsers).toHaveLength(2);
+    expect(retrievedUsers[0].username).toEqual('user1');
+    expect(retrievedUsers[1].username).toEqual('user2');
+  });
+
+  it('should return empty array when database returns empty result', async () => {
+    mockingoose(UserModel).toReturn([], 'find');
+    const retrievedUsers = (await getUsersList()) as SafeUser[];
+    expect(Array.isArray(retrievedUsers)).toBe(true);
+    expect(retrievedUsers).toHaveLength(0);
+  });
 });
 
 describe('loginUser', () => {
@@ -242,6 +269,45 @@ describe('updateUser', () => {
     const biographyUpdates: Partial<User> = { biography: newBio };
     const updatedError = await updateUser(user.username, biographyUpdates);
 
+    expect('error' in updatedError).toBe(true);
+  });
+
+  it('should update biography with multiline text', async () => {
+    const multilineBio = 'Line 1\nLine 2\nLine 3\n\nLine 5';
+    const biographyUpdates: Partial<User> = { biography: multilineBio };
+    mockingoose(UserModel).toReturn(
+      { ...safeUpdatedUser, biography: multilineBio },
+      'findOneAndUpdate',
+    );
+    const result = await updateUser(user.username, biographyUpdates);
+    if ('username' in result) {
+      expect(result.biography).toEqual(multilineBio);
+      expect(result.biography).toContain('\n');
+    } else {
+      throw new Error('Expected a safe user, got an error object.');
+    }
+  });
+
+  it('should handle biography with only whitespace', async () => {
+    const whitespaceBio = '   \t  \n  ';
+    const biographyUpdates: Partial<User> = { biography: whitespaceBio };
+    mockingoose(UserModel).toReturn(
+      { ...safeUpdatedUser, biography: whitespaceBio },
+      'findOneAndUpdate',
+    );
+    const result = await updateUser(user.username, biographyUpdates);
+    if ('username' in result) {
+      expect(result.biography).toEqual(whitespaceBio);
+    } else {
+      throw new Error('Expected a safe user, got an error object.');
+    }
+  });
+
+  it('should return error if database throws error during biography update', async () => {
+    const newBio = 'Bio that will cause error';
+    const biographyUpdates: Partial<User> = { biography: newBio };
+    mockingoose(UserModel).toReturn(new Error('Database connection lost'), 'findOneAndUpdate');
+    const updatedError = await updateUser(user.username, biographyUpdates);
     expect('error' in updatedError).toBe(true);
   });
 });

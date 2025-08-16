@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Chat, ChatUpdatePayload, Message, User } from '../types';
 import useUserContext from './useUserContext';
 import { createChat, getChatById, getChatsByUser, sendMessage } from '../services/chatService';
+import { getUserByUsername } from '../services/userService';
 
 /**
  * useDirectMessage is a custom hook that provides state and functions for direct messaging between users.
@@ -18,6 +19,9 @@ const useDirectMessage = () => {
 
   const handleJoinChat = (chatID: string) => {
     // TODO: Task 3 - Emit a 'joinChat' event to the socket with the chat ID function argument.
+    if (socket) {
+      socket.emit('joinChat', chatID);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -25,6 +29,23 @@ const useDirectMessage = () => {
     // Whitespace-only messages should not be sent, and the current chat to send this message to
     // should be defined. Use the appropriate service function to make an API call, and update the
     // states accordingly.
+    if (!newMessage.trim() || !selectedChat?._id) {
+      return;
+    }
+    try {
+      const updatedChat = await sendMessage(
+        {
+          msg: newMessage,
+          msgFrom: user.username!,
+          msgDateTime: new Date(),
+        },
+        selectedChat._id.toString(),
+      );
+      setSelectedChat(updatedChat);
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   };
 
   const handleChatSelect = async (chatID: string | undefined) => {
@@ -32,6 +53,16 @@ const useDirectMessage = () => {
     // If the chat ID is defined, fetch the chat details using the appropriate service function,
     // and update the appropriate state variables. Make sure the client emits a socket event to
     // subscribe to the chat room.
+    if (!chatID) {
+      return;
+    }
+    try {
+      const chat = await getChatById(chatID);
+      setSelectedChat(chat);
+      handleJoinChat(chatID);
+    } catch (error) {
+      console.error('Error selecting chat:', error);
+    }
   };
 
   const handleUserSelect = (selectedUser: User) => {
@@ -39,15 +70,36 @@ const useDirectMessage = () => {
   };
 
   const handleCreateChat = async () => {
-    // TODO: Task 3 - Implement the create chat handler function.
-    // If the username to create a chat is defined, use the appropriate service function to create a new chat
-    // between the current user and the chosen user. Update the appropriate state variables and emit a socket
-    // event to join the chat room. Hide the create panel after creating the chat.
+    if (!chatToCreate || !user._id) {
+      return;
+    }
+    try {
+      const selectedUser = await getUserByUsername(chatToCreate);
+      if (!selectedUser._id) {
+        return;
+      }
+      const newChat = await createChat([user._id, selectedUser._id.toString()]);
+      setChats(prevChats => [...prevChats, newChat]);
+      setSelectedChat(newChat);
+      if (newChat._id) {
+        handleJoinChat(newChat._id.toString());
+      }
+      setShowCreatePanel(false);
+      setChatToCreate('');
+    } catch (error) {
+      console.error('Error creating chat:', error);
+    }
   };
 
   useEffect(() => {
     const fetchChats = async () => {
-      // TODO: Task 3 - Fetch all the chats with the current user and update the state variable.
+      try {
+        const userChats = await getChatsByUser(user.username);
+        setChats(userChats);
+      } catch (error) {
+        console.error('Error fetching chats:', error);
+        setChats([]);
+      }
     };
 
     const handleChatUpdate = (chatUpdate: ChatUpdatePayload) => {
@@ -59,16 +111,38 @@ const useDirectMessage = () => {
       // - Throw an error for an invalid chatUpdate type
       // NOTE: For new messages, the user will only receive the update if they are
       // currently subscribed to the chat room.
+      const { chat, type } = chatUpdate;
+      if (type === 'created') {
+        setChats(prevChats => {
+          const exists = prevChats.some(existingChat => existingChat._id === chat._id);
+          return exists ? prevChats : [...prevChats, chat];
+        });
+      } else if (type === 'newMessage') {
+        // A new message is received (update the selected chat with the new message)
+        if (selectedChat && selectedChat._id === chat._id) {
+          setSelectedChat(chat);
+        }
+        setChats(prevChats =>
+          prevChats.map(existingChat => (existingChat._id === chat._id ? chat : existingChat)),
+        );
+      } else {
+        throw new Error(`Invalid chatUpdate type: ${type}`);
+      }
     };
 
     fetchChats();
 
     // TODO: Task 3 - Register the 'chatUpdate' event listener
-
+    if (socket) {
+      socket.on('chatUpdate', handleChatUpdate);
+    }
     return () => {
-      // TODO: Task 3 - Unsubscribe from the socket event
-      // TODO: Task 3 - Emit a socket event to leave the particular chat room
-      // they are currently in when the component unmounts.
+      if (socket) {
+        socket.off('chatUpdate', handleChatUpdate);
+        if (selectedChat?._id) {
+          socket.emit('leaveChat', selectedChat._id.toString());
+        }
+      }
     };
   }, [user.username, socket, selectedChat?._id]);
 

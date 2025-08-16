@@ -21,7 +21,7 @@ const commentSchema: Schema = new Schema(
       type: Date,
     },
   },
-  { collection: 'Comment' },
+  { timestamps: true, collection: 'chats' },
 );
 
 export default commentSchema;
