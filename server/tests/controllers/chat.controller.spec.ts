@@ -208,6 +208,70 @@ describe('Chat Controller', () => {
       expect(response.status).toBe(500);
       expect(response.text).toContain('Error when adding message to chat:');
     });
+
+    it('should return error when addParticipantToChat service returns error', async () => {
+      const chatId = new mongoose.Types.ObjectId().toString();
+      const participantId = new mongoose.Types.ObjectId().toString();
+      addParticipantSpy.mockResolvedValue({
+        error: 'User not found in database'
+      });
+      const response = await supertest(app)
+          .post(`/chat/${chatId}/addParticipant`)
+          .send({ participantId });
+      expect(response.status).toBe(500);
+      expect(response.text).toContain('Error when adding participant to chat:');
+      expect(response.text).toContain('User not found in database');
+      expect(addParticipantSpy).toHaveBeenCalledWith(chatId, participantId);
+    });
+
+    it('should handle service throwing an exception (line 124-126)', async () => {
+      const chatId = new mongoose.Types.ObjectId().toString();
+      const participantId = new mongoose.Types.ObjectId().toString();
+      addParticipantSpy.mockRejectedValue(new Error('Database connection lost'));
+      const response = await supertest(app)
+          .post(`/chat/${chatId}/addParticipant`)
+          .send({ participantId });
+      expect(response.status).toBe(500);
+      expect(response.text).toContain('Error when adding participant to chat:');
+      expect(response.text).toContain('Database connection lost');
+    });
+
+    it('should successfully add participant when service succeeds (line 123)', async () => {
+      const chatId = new mongoose.Types.ObjectId().toString();
+      const participantId = new mongoose.Types.ObjectId().toString();
+      const successResult: Chat = {
+        _id: new mongoose.Types.ObjectId(),
+        participants: ['user1', 'user2', 'newUser'],
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      addParticipantSpy.mockResolvedValue(successResult);
+      const response = await supertest(app)
+          .post(`/chat/${chatId}/addParticipant`)
+          .send({ participantId });
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        _id: successResult._id?.toString(),
+        participants: successResult.participants,
+        messages: [],
+        createdAt: successResult.createdAt?.toISOString(),
+        updatedAt: successResult.updatedAt?.toISOString(),
+      });
+    });
+
+    it('should return 400 for invalid request body (validation path)', async () => {
+      const chatId = new mongoose.Types.ObjectId().toString();
+      const invalidPayload = {
+        wrongField: 'someValue'
+      };
+      const response = await supertest(app)
+          .post(`/chat/${chatId}/addParticipant`)
+          .send(invalidPayload);
+      expect(response.status).toBe(400);
+      expect(response.text).toBe('Invalid participant request body');
+      expect(addParticipantSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /chat/:chatId', () => {
